@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<launch>
+
+ <!-- vicon_xb node -->
+  <node respawn="false" pkg="vicon_xb" type="vicon_xb_node" name="vicon_xb_node0" output="screen" launch-prefix="taskset -c 2">
+	<param name="viconSerialPort" type="string" value="/dev/serial/by-id/usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0" />
+	<param name="viconNodeRate" type="int" value="40"/>
+	<param name="viconCommTimeout" type="int" value="250"/>
+
+	<param name="logEnable" type="bool" value="false"/>
+	<param name="waitForUWB" type="bool" value="true"/>
+	<param name="publishEnable" type="bool" value="true"/>
+  </node>
+  
+</launch>
