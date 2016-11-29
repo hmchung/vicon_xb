@@ -120,6 +120,8 @@ void uwbPathCallback(const nav_msgs::Path& msg)
     uwbPathHeard = true;
 }
 
+bool fileExists(const std::string& filename);
+
 int main(int argc, char **argv)
 {
     //Create ros handler to node
@@ -171,13 +173,24 @@ int main(int argc, char **argv)
         publishEnable = false;
     }
 
+    //Create a log file
     struct passwd *pw = getpwuid(getuid());
     if(logEnable)
     {
-        char *viconfLogFileName = "/uwb_log/viconlog.m";
-        asprintf(&viconfLogFileName, "%s%s", pw->pw_dir, viconfLogFileName);
-        printf("%s\n", viconfLogFileName);
-        viconLog.open(viconfLogFileName);
+        std::stringstream filename;
+        int filecount = 1;
+        filename << string(pw->pw_dir) << "/vicon_log/vclog" << filecount << ".csv";
+        while(fileExists(filename.str()))
+        {
+            filecount++;
+            filename.clear();
+            filename.str("");
+            filename << string(pw->pw_dir) << "/vicon_log/vclog" << filecount << ".csv";
+        }
+        std::string ss = filename.str();
+        viconLog.open(ss.c_str(), std::ofstream::out | std::ofstream::app);
+        viconLog.precision(10);
+        cout << "log_file: " << ss.c_str() << endl;
         viconLog << "X=" << VICON_MSG_X << ";Y=" << VICON_MSG_Y << ";Z=" << VICON_MSG_Z
                  << ";Xd=" << VICON_MSG_XD << ";Yd=" << VICON_MSG_YD << ";Zd=" << VICON_MSG_ZD
                  << ";Ro=" << VICON_MSG_ROLL << ";Pi=" << VICON_MSG_PITCH << ";Ya=" << VICON_MSG_YAW << ";tv=0;" << endl;
@@ -442,4 +455,14 @@ int synchronize(ros::Rate rate, double timeOut)
             return -1;
     }
     return (int)((ros::Time::now() - synchStartTime).toSec()*1000);
+}
+
+bool fileExists(const std::string& filename)
+{
+
+    struct stat buf;
+    if(stat(filename.c_str(), &buf) != -1) {
+    return true;
+    }
+    return false;
 }
