@@ -225,6 +225,14 @@ int main(int argc, char **argv)
     {
         std::stringstream filename;
         filename << string(pw->pw_dir) << "/vicon_log/vclog" << fileIndx << ".m";
+		
+		std::string ss = filename.str();
+		viconLog.open(ss.c_str(), std::ofstream::out | std::ofstream::app);
+        viconLog.precision(10);
+        cout << "log_file: " << ss.c_str() << endl;
+        viconLog << "X=" << VICON_MSG_X << ";Y=" << VICON_MSG_Y << ";Z=" << VICON_MSG_Z
+                 << ";Xd=" << VICON_MSG_XD << ";Yd=" << VICON_MSG_YD << ";Zd=" << VICON_MSG_ZD
+                 << ";Ro=" << VICON_MSG_ROLL << ";Pi=" << VICON_MSG_PITCH << ";Ya=" << VICON_MSG_YAW << ";tv=0;" << "tvr=" << ros::Time::now() << ";" << endl;
     }
 
     //---------------------------------------Logging & Publish configuration-------------------------------------------//
