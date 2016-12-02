@@ -102,7 +102,7 @@ add_executable(vicon_xb_node src/vicon_xb.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-add_dependencies(vicon_xb_node vicon_xb_generate_messages_cpp)
+#add_dependencies(vicon_xb_node vicon_xb_generate_messages_cpp)
 
 add_dependencies(vicon_xb_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
