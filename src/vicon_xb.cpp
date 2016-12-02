@@ -31,7 +31,7 @@
 #include <boost/assign/list_of.hpp>
 #include <errno.h>
 #include <serial/serial.h>
-
+#include "vicon_xb/viconXbSrv.h"
 //For log file use
 #include <fstream>
 #include <pwd.h>
@@ -112,12 +112,16 @@ std::ofstream viconLog;
 nav_msgs::Path viconPathMsg;
 std::vector<geometry_msgs::PoseStamped> viconPath;
 uint32_t viconPoseCount = 0;
-bool uwbPathHeard = false;
+bool blocked = false;
+int fileIndx = -1;
 
-void uwbPathCallback(const nav_msgs::Path& msg)
+bool viconXbSrvCallback(vicon_xb::viconXbSrv::Request &req, vicon_xb::viconXbSrv::Response &res)
 {
-    ROS_INFO("uwb path heard\n");
-    uwbPathHeard = true;
+    blocked = req.block;
+    fileIndx = req.logfile_idx;
+    ROS_INFO("vicon service request received: b/u=%d\tfileIndx=%d\n", blocked, fileIndx);
+    res.result = 0;
+    return true;
 }
 
 bool fileExists(const std::string& filename);
@@ -125,14 +129,14 @@ bool fileExists(const std::string& filename);
 int main(int argc, char **argv)
 {
     //Create ros handler to node
-    ros::init(argc, argv, "viconXbeeNode");
-    ros::NodeHandle viconXbeeNode("~");
+    ros::init(argc, argv, "viconXbeeNodeHandle");
+    ros::NodeHandle viconXbeeNodeHandle("~");
 
     //vicon path vizualization
-    ros::Publisher viconPathPublisher = viconXbeeNode.advertise<nav_msgs::Path>("vicon/path", 1);
+    ros::Publisher viconPathPublisher = viconXbeeNodeHandle.advertise<nav_msgs::Path>("vicon/path", 1);
 
     string serialPortName = string(DFLT_PORT);
-    if(viconXbeeNode.getParam("viconSerialPort", serialPortName))
+    if(viconXbeeNodeHandle.getParam("viconSerialPort", serialPortName))
         printf(KBLU"Retrieved value %s for param 'viconSerialPort'!\n"RESET, serialPortName.data());
     else
     {
@@ -140,14 +144,36 @@ int main(int argc, char **argv)
         return 0;
     }
     int viconNodeRate = DFLT_NODE_RATE;
-    if(viconXbeeNode.getParam("viconNodeRate", viconNodeRate))
+    if(viconXbeeNodeHandle.getParam("viconNodeRate", viconNodeRate))
         printf(KBLU"Retrieved value %d for param 'viconnNodeRate'\n"RESET, viconNodeRate);
     else
         printf(KYEL "Couldn't retrieve param 'viconnNodeRate', applying default value %dHz\n"RESET, viconNodeRate);
 
+    //ros Rate object to control the update rate
+    ros::Rate rate = ros::Rate(viconNodeRate);
+    if(viconXbeeNodeHandle.getParam("blocked", blocked))
+    {
+        if(blocked)
+            printf(KBLU"Blocked until unblocked.!\n"RESET);
+        else
+            printf(KBLU"Not blocked!\n"RESET);
+    }
+    else
+    {
+        printf(KRED "Couldn't retrieve param 'blocked'. No blocking by default."RESET);
+        blocked = false;
+    }
+
+    ros::ServiceServer viconServer = viconXbeeNodeHandle.advertiseService("/vicon_xb_srv", viconXbSrvCallback);
+
+    while(ros::ok() && blocked)
+    {
+        ros::spinOnce();
+        rate.sleep();
+    }
 
     //---------------------------------------Logging & Publish configuration-------------------------------------------//
-    if(viconXbeeNode.getParam("logEnable", logEnable))
+    if(viconXbeeNodeHandle.getParam("logEnable", logEnable))
     {
         if(logEnable)
             printf(KBLU"Logging enabled!\n"RESET);
@@ -160,7 +186,7 @@ int main(int argc, char **argv)
         logEnable = false;
     }
 
-    if(viconXbeeNode.getParam("publishEnable", publishEnable))
+    if(viconXbeeNodeHandle.getParam("publishEnable", publishEnable))
     {
         if(publishEnable)
             printf(KBLU"Publishing enabled!\n"RESET);
@@ -175,17 +201,17 @@ int main(int argc, char **argv)
 
     //Create a log file
     struct passwd *pw = getpwuid(getuid());
-    if(logEnable)
+    if(logEnable && fileIndx == -1)
     {
         std::stringstream filename;
         int filecount = 1;
-        filename << string(pw->pw_dir) << "/vicon_log/vclog" << filecount << ".csv";
+        filename << string(pw->pw_dir) << "/vicon_log/vclog" << filecount << ".m";
         while(fileExists(filename.str()))
         {
             filecount++;
             filename.clear();
             filename.str("");
-            filename << string(pw->pw_dir) << "/vicon_log/vclog" << filecount << ".csv";
+            filename << string(pw->pw_dir) << "/vicon_log/vclog" << filecount << ".m";
         }
         std::string ss = filename.str();
         viconLog.open(ss.c_str(), std::ofstream::out | std::ofstream::app);
@@ -193,46 +219,25 @@ int main(int argc, char **argv)
         cout << "log_file: " << ss.c_str() << endl;
         viconLog << "X=" << VICON_MSG_X << ";Y=" << VICON_MSG_Y << ";Z=" << VICON_MSG_Z
                  << ";Xd=" << VICON_MSG_XD << ";Yd=" << VICON_MSG_YD << ";Zd=" << VICON_MSG_ZD
-                 << ";Ro=" << VICON_MSG_ROLL << ";Pi=" << VICON_MSG_PITCH << ";Ya=" << VICON_MSG_YAW << ";tv=0;" << endl;
+                 << ";Ro=" << VICON_MSG_ROLL << ";Pi=" << VICON_MSG_PITCH << ";Ya=" << VICON_MSG_YAW << ";tv=0;" << "tvr=" << ros::Time::now() << ";" << endl;
+    }
+    else if(logEnable)
+    {
+        std::stringstream filename;
+        filename << string(pw->pw_dir) << "/vicon_log/vclog" << fileIndx << ".m";
     }
 
     //---------------------------------------Logging & Publish configuration-------------------------------------------//
-    //ros Rate object to control the update rate
-    ros::Rate rate = ros::Rate(viconNodeRate);
-
-    bool waitForUWB = false;
-    if(viconXbeeNode.getParam("waitForUWB", waitForUWB))
-    {
-        if(waitForUWB)
-            printf(KBLU"Waiting for uwb.!\n"RESET);
-        else
-            printf(KBLU"Go ahead before uwb!\n"RESET);
-    }
-    else
-    {
-        printf(KRED "Couldn't retrieve param 'waitForUWB'. No wait by default."RESET);
-        waitForUWB = false;
-    }
-
-    if(waitForUWB)
-    {
-        ros::Subscriber uwbPathSubscriber = viconXbeeNode.subscribe("/uwb_path", 1, uwbPathCallback);
-        while(ros::ok() && !uwbPathHeard)
-        {
-            ros::spinOnce();
-            rate.sleep();
-        }
-    }
 
     int viconCommTimeout = DFLT_COMM_TIMEOUT;
-    if(viconXbeeNode.getParam("viconCommTimeout", viconCommTimeout))
+    if(viconXbeeNodeHandle.getParam("viconCommTimeout", viconCommTimeout))
         printf(KBLU"Retrieved value %d [ms] for param 'viconCommTimeout'\n"RESET, viconCommTimeout);
     else
         printf(KYEL "Couldn't retrieve param 'viconCommTimeout', applying default value %dms\n"RESET, viconCommTimeout);
 
 
-    ros::Publisher viconPosePublisher = viconXbeeNode.advertise<viconXbee::viconPoseMsg>("viconPoseTopic", 1);
-    ros::Publisher viconMocapPublisher = viconXbeeNode.advertise<geometry_msgs::PoseStamped>("mocap/pose", 1);
+    ros::Publisher viconPosePublisher = viconXbeeNodeHandle.advertise<viconXbee::viconPoseMsg>("viconPoseTopic", 1);
+    ros::Publisher viconMocapPublisher = viconXbeeNodeHandle.advertise<geometry_msgs::PoseStamped>("mocap/pose", 1);
 
     //-------------------------------Initialize Serial Connection---------------------------------
     fd.setPort(serialPortName);
@@ -394,7 +399,7 @@ int main(int argc, char **argv)
                                 viconLog << "X=[X " << VICON_MSG_X << "];Y=[Y " << VICON_MSG_Y <<"];Z=[Z " << VICON_MSG_Z <<"];"
                                          << "Xd=[Xd " << VICON_MSG_XD <<"];Yd=[Yd " << VICON_MSG_YD << "];Zd=[Zd " << VICON_MSG_ZD << "];"
                                          << "Ro=[Ro " << VICON_MSG_ROLL << "];Pi=[Pi " << VICON_MSG_PITCH <<"];Ya=[Ya " << VICON_MSG_YAW <<"];"
-                                         << "tv=[tv " << timeStamp.toSec() << "];" << endl;
+                                         << "tv=[tv " << timeStamp.toSec() << "];" << "tvr=[tvr " << ros::Time::now() << "];" << endl;
 
                             }
                         }

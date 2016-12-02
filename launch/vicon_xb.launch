@@ -8,7 +8,7 @@
 	<param name="viconCommTimeout" type="int" value="250"/>
 
 	<param name="logEnable" type="bool" value="false"/>
-	<param name="waitForUWB" type="bool" value="true"/>
+	<param name="blocked" type="bool" value="true"/>
 	<param name="publishEnable" type="bool" value="true"/>
   </node>
   

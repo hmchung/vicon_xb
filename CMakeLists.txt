@@ -47,11 +47,10 @@ find_package(catkin REQUIRED COMPONENTS roscpp rospy std_msgs message_generation
  )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+ add_service_files(
+   FILES
+   viconXbSrv.srv
+ )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -103,7 +102,9 @@ add_executable(vicon_xb_node src/vicon_xb.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
- add_dependencies(vicon_xb_node vicon_xb_generate_messages_cpp)
+add_dependencies(vicon_xb_node vicon_xb_generate_messages_cpp)
+
+add_dependencies(vicon_xb_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(vicon_xb_node
