@@ -63,20 +63,10 @@
 using namespace std;
 serial::Serial fd;
 
-uint8_t		frame32[RCV_THRESHOLD];
 uint8_t		rcvdFrame[RCV_THRESHOLD];
-uint8_t		backupFrame[RCV_THRESHOLD];
-uint8_t		flagIncompleteFrame = 0;
-int			rcvdBytesCount = 0;
-uint8_t		backupRcvBytesCount = 0;
-uint8_t		misAlgnFlag = DOWN;
-uint8_t		msgFlag = DOWN;
-uint8_t		viconUpdateFlag = DOWN;
-uint8_t		publishFlag = DOWN;
-uint8_t		headerIndex = 0xFF;
 uint32_t	seqCount = 0;
-uint32_t viconStartTimestamp;
-ros::Time viconRosStartTimestamp;
+uint32_t    viconStartTimestamp;
+ros::Time   viconRosStartTimestamp;
 
 #define VICON_MSG_HDR       *(uint32_t *)rcvdFrame
 #define VICON_MSG_X         *(float *)(rcvdFrame + 4)
@@ -87,23 +77,12 @@ ros::Time viconRosStartTimestamp;
 #define VICON_MSG_ZD        *(float *)(rcvdFrame + 24)
 #define VICON_MSG_ROLL      *(float *)(rcvdFrame + 28)
 #define VICON_MSG_PITCH     *(float *)(rcvdFrame + 32)
-#define VICON_MSG_YAW      *(float *)(rcvdFrame + 36)
+#define VICON_MSG_YAW       *(float *)(rcvdFrame + 36)
 #define VICON_MSG_STMP      *(uint32_t *)(rcvdFrame + 40)
 #define VICON_MSG_CSA       *(uint8_t *)(rcvdFrame + 44)
 #define VICON_MSG_CSB       *(uint8_t *)(rcvdFrame + 45)
 
-long validCount = 0;
-long faultCount = 0;
-long freeCount = 0;
-long loopCount = 0;
-
-void signal_handler_IO(int status)
-{
-    msgFlag = UP;
-}
-
 int synchronize(ros::Rate rate, double timeOut);
-
 
 bool logEnable = false;
 bool publishEnable = true;
@@ -172,6 +151,39 @@ int main(int argc, char **argv)
         rate.sleep();
     }
 
+    int viconCommTimeout = DFLT_COMM_TIMEOUT;
+    if(viconXbeeNodeHandle.getParam("viconCommTimeout", viconCommTimeout))
+        printf(KBLU"Retrieved value %d [ms] for param 'viconCommTimeout'\n"RESET, viconCommTimeout);
+    else
+        printf(KYEL "Couldn't retrieve param 'viconCommTimeout', applying default value %dms\n"RESET, viconCommTimeout);
+
+
+    ros::Publisher viconPosePublisher = viconXbeeNodeHandle.advertise<viconXbee::viconPoseMsg>("viconPoseTopic", 1);
+    ros::Publisher viconMocapPublisher = viconXbeeNodeHandle.advertise<geometry_msgs::PoseStamped>("mocap/pose", 1);
+
+    //-------------------------------Initialize Serial Connection---------------------------------
+    fd.setPort(serialPortName);
+    fd.setBaudrate(BAUDRATE);
+    fd.setTimeout(5, 10, 0, 10, 0);
+    fd.open();
+    if (fd.isOpen())
+    {
+        fd.flushInput();
+        printf(KBLU "Connection established\n\n" RESET);
+    }
+    else
+    {
+        printf(KRED "serialInit: Failed to open port %s\n" RESET, serialPortName.data());
+        return 0;
+    }
+    //Looping to catch the intial of frame
+    if( synchronize(rate, viconCommTimeout/1000.0) < 0)
+    {
+        printf("Timeout synchronizing with stream. Exitting!");
+        exit(1);
+    }
+    //-----------------------------------Serial Initialization-------------------------------------//
+
     //---------------------------------------Logging & Publish configuration-------------------------------------------//
     if(viconXbeeNodeHandle.getParam("logEnable", logEnable))
     {
@@ -225,50 +237,9 @@ int main(int argc, char **argv)
     {
         std::stringstream filename;
         filename << string(pw->pw_dir) << "/vicon_log/vclog" << fileIndx << ".m";
-		
-		std::string ss = filename.str();
-		viconLog.open(ss.c_str(), std::ofstream::out | std::ofstream::app);
-        viconLog.precision(10);
-        cout << "log_file: " << ss.c_str() << endl;
-        viconLog << "X=" << VICON_MSG_X << ";Y=" << VICON_MSG_Y << ";Z=" << VICON_MSG_Z
-                 << ";Xd=" << VICON_MSG_XD << ";Yd=" << VICON_MSG_YD << ";Zd=" << VICON_MSG_ZD
-                 << ";Ro=" << VICON_MSG_ROLL << ";Pi=" << VICON_MSG_PITCH << ";Ya=" << VICON_MSG_YAW << ";tv=0;" << "tvr=" << ros::Time::now() << ";" << endl;
     }
 
     //---------------------------------------Logging & Publish configuration-------------------------------------------//
-
-    int viconCommTimeout = DFLT_COMM_TIMEOUT;
-    if(viconXbeeNodeHandle.getParam("viconCommTimeout", viconCommTimeout))
-        printf(KBLU"Retrieved value %d [ms] for param 'viconCommTimeout'\n"RESET, viconCommTimeout);
-    else
-        printf(KYEL "Couldn't retrieve param 'viconCommTimeout', applying default value %dms\n"RESET, viconCommTimeout);
-
-
-    ros::Publisher viconPosePublisher = viconXbeeNodeHandle.advertise<viconXbee::viconPoseMsg>("viconPoseTopic", 1);
-    ros::Publisher viconMocapPublisher = viconXbeeNodeHandle.advertise<geometry_msgs::PoseStamped>("mocap/pose", 1);
-
-    //-------------------------------Initialize Serial Connection---------------------------------
-    fd.setPort(serialPortName);
-    fd.setBaudrate(BAUDRATE);
-    fd.setTimeout(5, 10, 0, 10, 0);
-    fd.open();
-    if (fd.isOpen())
-    {
-        fd.flushInput();
-        printf(KBLU "Connection established\n\n" RESET);
-    }
-    else
-    {
-        printf(KRED "serialInit: Failed to open port %s\n" RESET, serialPortName.data());
-        return 0;
-    }
-    //-----------------------------------Serial Initialization-------------------------------------//
-    //Looping to catch the intial of frame
-    if( synchronize(rate, viconCommTimeout/1000.0) < 0)
-    {
-        printf("Timeout synchronizing with stream. Exitting!");
-        exit(1);
-    }
 
     viconStartTimestamp = VICON_MSG_STMP;
     viconRosStartTimestamp = ros::Time::now();
