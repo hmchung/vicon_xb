@@ -19,10 +19,11 @@
 #include <math.h>
 #include <cstring>
 #include <unistd.h>
+#include <unistd.h>
 #include <sstream>
 #include <signal.h>
 #include <math.h>
-#include <viconXbee/viconPoseMsg.h>
+#include <vicon_xb/viconPoseMsg.h>
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
@@ -159,7 +160,7 @@ int main(int argc, char **argv)
         printf(KYEL "Couldn't retrieve param 'viconCommTimeout', applying default value %dms\n"RESET, viconCommTimeout);
 
 
-    ros::Publisher viconPosePublisher = viconXbeeNodeHandle.advertise<viconXbee::viconPoseMsg>("viconPoseTopic", 1);
+    ros::Publisher viconPosePublisher = viconXbeeNodeHandle.advertise<vicon_xb::viconPoseMsg>("viconPoseTopic", 1);
     ros::Publisher viconMocapPublisher = viconXbeeNodeHandle.advertise<geometry_msgs::PoseStamped>("mocap/pose", 1);
 
     //-------------------------------Initialize Serial Connection---------------------------------
@@ -330,7 +331,7 @@ int main(int argc, char **argv)
 
                             if(publishEnable)
                             {
-                                viconXbee::viconPoseMsg viconPose;
+                                vicon_xb::viconPoseMsg viconPose;
 
                                 viconPose.time_stamp = viconRosStartTimestamp + timeStamp;
                                 viconPose.x = VICON_MSG_X;
