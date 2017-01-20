@@ -4,7 +4,15 @@ project(vicon_xb)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS roscpp rospy std_msgs message_generation serial)
+find_package(catkin REQUIRED COMPONENTS 
+	roscpp 
+	rospy 
+	std_msgs 
+	message_generation 
+	serial
+	tf
+	geometry_msgs
+)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -99,6 +107,8 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(vicon_xb_node src/vicon_xb.cpp)
+add_executable(tf_broadcaster src/tf_broadcaster.cpp)
+
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -107,9 +117,8 @@ add_executable(vicon_xb_node src/vicon_xb.cpp)
 add_dependencies(vicon_xb_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(vicon_xb_node
-  ${catkin_LIBRARIES}
-)
+target_link_libraries(vicon_xb_node  ${catkin_LIBRARIES} )
+target_link_libraries(tf_broadcaster  ${catkin_LIBRARIES} )
 #############
 ## Install ##
 #############
