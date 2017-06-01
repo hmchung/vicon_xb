@@ -36,6 +36,7 @@
 //For log file use
 #include <fstream>
 #include <pwd.h>
+#include <glob.h>   //To search for port
 
 //#include <mavros/Imu.h>
 
@@ -89,8 +90,6 @@ bool logEnable = false;
 bool publishEnable = true;
 std::ofstream viconLog;
 
-nav_msgs::Path viconPathMsg;
-std::vector<geometry_msgs::PoseStamped> viconPath;
 uint32_t viconPoseCount = 0;
 bool blocked = false;
 int fileIndx = -1;
@@ -111,9 +110,6 @@ int main(int argc, char **argv)
     //Create ros handler to node
     ros::init(argc, argv, "viconXbeeNodeHandle");
     ros::NodeHandle viconXbeeNodeHandle("~");
-
-    //vicon path vizualization
-    ros::Publisher viconPathPublisher = viconXbeeNodeHandle.advertise<nav_msgs::Path>("vicon/path", 1);
 
     string serialPortName = string(DFLT_PORT);
     if(viconXbeeNodeHandle.getParam("viconSerialPort", serialPortName))
@@ -148,7 +144,7 @@ int main(int argc, char **argv)
 
     while(ros::ok() && blocked)
     {
-		printf("vicon_xb waiting to get unlocked.\n");
+        printf("vicon_xb waiting to get unlocked.\n");
         ros::spinOnce();
         rate.sleep();
     }
@@ -159,11 +155,23 @@ int main(int argc, char **argv)
     else
         printf(KYEL "Couldn't retrieve param 'viconCommTimeout', applying default value %dms\n"RESET, viconCommTimeout);
 
+    bool pollPort = true;
+    if(viconXbeeNodeHandle.getParam("viconCommTimeout", viconCommTimeout))
+        printf(KBLU"Retrieved value %d [ms] for param 'viconCommTimeout'\n"RESET, viconCommTimeout);
+    else
+        printf(KYEL "Couldn't retrieve param 'viconCommTimeout', applying default value %dms\n"RESET, viconCommTimeout);
+
 
     ros::Publisher viconPosePublisher = viconXbeeNodeHandle.advertise<vicon_xb::viconPoseMsg>("viconPoseTopic", 1);
-    ros::Publisher viconMocapPublisher = viconXbeeNodeHandle.advertise<geometry_msgs::PoseStamped>("mocap/pose", 1);
 
     //-------------------------------Initialize Serial Connection---------------------------------
+    glob_t glob_results;
+    while(glob(serialPortName.c_str(), 0, NULL, &glob_results) == GLOB_NOMATCH)
+    {
+        printf("Port \"%s\" not found! Checking after 0.5s\n"RESET, serialPortName.data());
+        ros::Duration(0.5).sleep();
+    }
+
     fd.setPort(serialPortName);
     fd.setBaudrate(BAUDRATE);
     fd.setTimeout(5, 10, 0, 10, 0);
@@ -175,15 +183,13 @@ int main(int argc, char **argv)
     }
     else
     {
-        printf(KRED "serialInit: Failed to open port %s\n" RESET, serialPortName.data());
-        return 0;
+        printf(KRED "serialInit: Failed to open port %s..\n" RESET, serialPortName.data());
+        ros::Duration(0.25).sleep();
     }
+
     //Looping to catch the intial of frame
-    if( synchronize(rate, viconCommTimeout/1000.0) < 0)
-    {
-        printf("Timeout synchronizing with stream. Exitting!");
-        exit(1);
-    }
+    while( synchronize(rate, viconCommTimeout/1000.0) < 0)
+        printf("Timeout synchronizing with stream.");
     //-----------------------------------Serial Initialization-------------------------------------//
 
     //---------------------------------------Logging & Publish configuration-------------------------------------------//
@@ -239,7 +245,7 @@ int main(int argc, char **argv)
     {
         std::stringstream filename;
         filename << string(pw->pw_dir) << "/vicon_log/vclog" << fileIndx << ".m";
-		std::string ss = filename.str();
+        std::string ss = filename.str();
         viconLog.open(ss.c_str(), std::ofstream::out | std::ofstream::app);
         viconLog.precision(10);
         cout << "log_file: " << ss.c_str() << endl;
@@ -265,8 +271,6 @@ int main(int argc, char **argv)
             if(bytes_avail >= RCV_THRESHOLD)
                 while(fd.available() >= RCV_THRESHOLD)
                 {
-                    lastMsgTime = ros::Time::now();
-
                     fd.read(rcvdFrame, RCV_THRESHOLD);
                     //Since intial synchronization, first 4 bytes must be headers otherwise there must have been an error
                     uint32_t headerWord = VICON_MSG_HDR;
@@ -275,20 +279,22 @@ int main(int argc, char **argv)
                         //If there is some error, call the synchronize procedure
                         printf("Lost synchronization. Attempting to synchronize back.\n");
                         if( synchronize(rate, viconCommTimeout/1000.0) < 0)
+                            printf("Timeout synchronizing with stream. OMG!");
+                        else
                         {
-                            printf("Timeout synchronizing with stream. Exitting!");
-                            exit(1);
+                            printf("Synchronization recovered.\n");
+                            lastMsgTime = ros::Time::now();
                         }
-                        printf("Synchronization recovered.\n");
-
                     }
                     else
                     {
+                        lastMsgTime = ros::Time::now();
+
                         //All things are good so far
                         printf(KBLU"Aligned Header found, "RESET);
-//                        for(int i = 0; i < RCV_THRESHOLD; i++)
-//                            printf(KGRN"%2x ", rcvdFrame[i]);
-//                        printf("\n"RESET);
+                       // for(int i = 0; i < RCV_THRESHOLD; i++)
+                       //     printf(KGRN"%2x ", rcvdFrame[i]);
+                       // printf("\n"RESET);
 
                         //Checksum
                         bool validCRC = false;
@@ -332,54 +338,32 @@ int main(int argc, char **argv)
                             if(publishEnable)
                             {
                                 vicon_xb::viconPoseMsg viconPose;
+                                viconPose.header.seq = seqCount++;
+                                viconPose.header.stamp = ros::Time::now();
+                                viconPose.header.frame_id = "/vicon_frame";
+                                viconPose.pose.position.x = VICON_MSG_X;
+                                viconPose.pose.position.y = VICON_MSG_Y;
+                                viconPose.pose.position.z = VICON_MSG_Z;
+                                
+                                tf::Quaternion qV =  tf::Quaternion(sin(VICON_MSG_ROLL/2), 0, 0, cos(VICON_MSG_ROLL/2))
+                                                    *tf::Quaternion(0, sin(VICON_MSG_PITCH/2), 0, cos(VICON_MSG_PITCH/2))
+                                                    *tf::Quaternion(0, 0, sin(VICON_MSG_YAW/2), cos(VICON_MSG_YAW/2));
 
-                                viconPose.time_stamp = viconRosStartTimestamp + timeStamp;
-                                viconPose.x = VICON_MSG_X;
-                                viconPose.y = VICON_MSG_Y;
-                                viconPose.z = VICON_MSG_Z;
-                                viconPose.dx = VICON_MSG_XD;
-                                viconPose.dy = VICON_MSG_YD;
-                                viconPose.dz = VICON_MSG_ZD;
-                                viconPose.roll = VICON_MSG_ROLL;
-                                viconPose.pitch = VICON_MSG_PITCH;
-                                viconPose.yaw = VICON_MSG_YAW;
+                                viconPose.pose.orientation.x = qV.x();
+                                viconPose.pose.orientation.y = qV.y();
+                                viconPose.pose.orientation.z = qV.z();
+                                viconPose.pose.orientation.w = qV.w();
+
+                                viconPose.vel.x = VICON_MSG_XD;
+                                viconPose.vel.y = VICON_MSG_YD;
+                                viconPose.vel.z = VICON_MSG_ZD;
+
+                                viconPose.eulers.x = VICON_MSG_ROLL;
+                                viconPose.eulers.y = VICON_MSG_PITCH;
+                                viconPose.eulers.z = VICON_MSG_YAW;
+
                                 viconPosePublisher.publish(viconPose);
 
-                                //publish to mocap/pose topic
-                                geometry_msgs::PoseStamped poseStamped;
-                                poseStamped.header.seq = seqCount++;
-                                poseStamped.header.stamp = viconPose.time_stamp;
-                                poseStamped.header.frame_id = "/local_frame";
-                                poseStamped.pose.position.x = viconPose.x;
-                                poseStamped.pose.position.y = viconPose.y;
-                                poseStamped.pose.position.z = viconPose.z;
-                                tf::Quaternion q = tf::Quaternion(sin(viconPose.roll/2), 0, 0, cos(viconPose.roll/2))
-                                                    *tf::Quaternion(0, sin(viconPose.pitch/2), 0, cos(viconPose.pitch/2))
-                                                    *tf::Quaternion(0, 0, sin(viconPose.yaw/2), cos(viconPose.yaw/2));
-                                tf::Quaternion qBL = q;
-                                poseStamped.pose.orientation.x = qBL.x();
-                                poseStamped.pose.orientation.y = qBL.y();
-                                poseStamped.pose.orientation.z = qBL.z();
-                                poseStamped.pose.orientation.w = qBL.w();
-                                viconMocapPublisher.publish(poseStamped);
-
-
-                                if(viconPath.size() > 10000)
-                                    viconPath.clear();
-
-                                viconPath.push_back(poseStamped);
-
-                                viconPathMsg.header.seq = seqCount;
-                                viconPathMsg.header.stamp = ros::Time::now();
-                                viconPathMsg.header.frame_id = "/local_frame";
-
-                                viconPathMsg.poses = viconPath;
-
-                                if(publishEnable)
-                                {
-                                    printf("Array size:%d\n", viconPath.size());
-                                    viconPathPublisher.publish(viconPathMsg);
-                                }
                             }
 
                             if(logEnable)
@@ -387,7 +371,7 @@ int main(int argc, char **argv)
                                 viconLog << "X=[X " << VICON_MSG_X << "];Y=[Y " << VICON_MSG_Y <<"];Z=[Z " << VICON_MSG_Z <<"];"
                                          << "Xd=[Xd " << VICON_MSG_XD <<"];Yd=[Yd " << VICON_MSG_YD << "];Zd=[Zd " << VICON_MSG_ZD << "];"
                                          << "Ro=[Ro " << VICON_MSG_ROLL << "];Pi=[Pi " << VICON_MSG_PITCH <<"];Ya=[Ya " << VICON_MSG_YAW <<"];"
-                                         << "tv=[tv " << timeStamp.toSec() << "];" << "tvr=[tvr " << ros::Time::now() << "];" << endl;
+                                         << "tv=[tv " << ros::Time::now() << "];" << "tvr=[tvr " << ros::Time::now() << "];" << endl;
 
                             }
                         }
@@ -418,10 +402,7 @@ int synchronize(ros::Rate rate, double timeOut)
         printf("Bytes in buffer%d\n", bytes_avail);
 
         if(bytes_avail < RCV_THRESHOLD*2)
-        {
             rate.sleep();
-            continue;
-        }
         else
         {
             //dummy read to clean up the buffer

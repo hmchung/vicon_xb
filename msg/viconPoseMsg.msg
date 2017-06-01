@@ -1,10 +1,4 @@
-time time_stamp
-float32 x
-float32 y
-float32 z
-float32 dx
-float32 dy
-float32 dz
-float32 roll
-float32 pitch
-float32 yaw
+Header header
+geometry_msgs/Pose pose
+geometry_msgs/Vector3 vel
+geometry_msgs/Vector3 eulers
