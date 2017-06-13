@@ -16,7 +16,7 @@
 using namespace cv;
 
 std::string node_name = "vicon_native_pub";
-std::string topic_sub_vicon_info = "/vicon_xb_node0/viconPoseTopic";
+std::string topic_sub_vicon_info = "/vicon_xb/viconPoseTopic";
 
 std::string topic_pub_pose_local = "/vicon/pose_local";
 std::string topic_pub_vel_local = "/vicon/twist_local";
