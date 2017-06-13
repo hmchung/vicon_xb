@@ -4,7 +4,14 @@ project(vicon_xb)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS roscpp rospy std_msgs geometry_msgs message_generation serial)
+find_package(catkin REQUIRED COMPONENTS 
+	roscpp 
+	rospy 
+	std_msgs 
+	geometry_msgs 
+	message_generation 
+	serial
+	cv_bridge)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -90,7 +97,8 @@ catkin_package(
 ## Your package locations should be listed before other locations
 # include_directories(include)
 include_directories(
-  ${catkin_INCLUDE_DIRS}
+  	${catkin_INCLUDE_DIRS}
+	${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
@@ -100,6 +108,8 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(vicon_xb_node src/vicon_xb.cpp)
+add_executable(vicon_native_pub src/vicon_native_pub.cpp)
+
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -108,9 +118,9 @@ add_executable(vicon_xb_node src/vicon_xb.cpp)
 add_dependencies(vicon_xb_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(vicon_xb_node
-  ${catkin_LIBRARIES}
-)
+target_link_libraries(vicon_xb_node  ${catkin_LIBRARIES})
+target_link_libraries(vicon_native_pub  ${catkin_LIBRARIES} ${OpenCV_LIB})
+
 #############
 ## Install ##
 #############

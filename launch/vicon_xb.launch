@@ -15,5 +15,9 @@
 
   </node>
   
+  <!-- publish to ROS-friendly topic -->
+  <node respawn="false" pkg="vicon_xb" type="vicon_native_pub" name="vicon_native_pub" output="screen"/>
+
+  <!-- extra convenient TF -->
   <include file="$(find vicon_xb)/launch/vicon_local_tf.launch"/>
 </launch>
